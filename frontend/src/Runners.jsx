@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { FaPlus } from 'react-icons/fa';
 
-function Runners({ onSelect, top10, eventStarted }) {
+function Runners({ onSelect, top10, eventStarted, raceId }) {
   const [runners, setRunners] = useState([]);
 
   useEffect(() => {
-    fetch('/runners', { credentials: 'include' })
+    if (!raceId) return setRunners([]);
+    fetch(`/races/${raceId}/runners`, { credentials: 'include' })
       .then(res => res.json())
       .then(setRunners)
       .catch(() => setRunners([]));
-  }, []);
-
+  }, [raceId]);
+  console.log(top10)
+  
   const isDisabled = (runnerId) => eventStarted || top10.length >= 10 || top10.includes(runnerId);
+
+  if (!raceId) return null;
 
   return (
     <div className="runner-pool">

@@ -148,10 +148,10 @@ button:not(:disabled):hover {
   display: flex;
   max-width: 1250px;
   margin: 0 auto;
-
 }
 .runner-pool {
-  
+  min-width: 40%;
+  margin-right: 1rem;
 }
 
 .runner-pool__list{
@@ -172,9 +172,8 @@ button:not(:disabled):hover {
   align-items: center;
 }
 
-.selected-runners{
-  min-width: 40%;
-  margin-right: 1rem;
+.selected-runners ol{
+  list-style: none;
 }
 
 .header {

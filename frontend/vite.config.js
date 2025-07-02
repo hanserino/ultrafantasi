@@ -10,6 +10,12 @@ export default defineConfig({
       '/selections': 'http://localhost:4000',
       '/me': 'http://localhost:4000',
       '/leaderboard': 'http://localhost:4000',
+      '/races': 'http://localhost:4000', // for GET /races
+      '^/races/.*': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        rewrite: path => path,
+      },
     },
   },
 });

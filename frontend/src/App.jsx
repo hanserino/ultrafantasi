@@ -5,6 +5,7 @@ import Runners from './Runners';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { FaTrophy, FaArrowUp, FaArrowDown, FaTrash } from 'react-icons/fa';
 import Leaderboard from './Leaderboard';
+import RaceOverview from './RaceOverview';
 
 const EVENT_START = new Date('2025-07-03T10:00:00Z'); // Sett starttidspunkt for arrangementet her
 
@@ -17,6 +18,7 @@ function App() {
   const [nickname, setNickname] = useState("");
   const [nicknameSaved, setNicknameSaved] = useState(false);
   const [view, setView] = useState('main'); // 'main' or 'leaderboard'
+  const [selectedRace, setSelectedRace] = useState(null);
 
   useEffect(() => {
     fetch('/auth/me', { credentials: 'include' })
@@ -27,6 +29,22 @@ function App() {
       })
       .catch(() => setUser(null));
   }, []);
+
+  useEffect(() => {
+    if (!user || user.error || !selectedRace) return;
+    fetch(`/races/${selectedRace.id}/selections/me`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(selections => {
+        if (Array.isArray(selections) && selections.length > 0) {
+          const sorted = selections
+            .filter(sel => sel.runner)
+            .sort((a, b) => a.rank - b.rank);
+          setTop10(sorted.map(sel => sel.runner.id));
+        } else {
+          setTop10([]);
+        }
+      });
+  }, [user, selectedRace]);
 
   useEffect(() => {
     fetch('/runners')
@@ -54,8 +72,8 @@ function App() {
   };
 
   const handleSubmit = async () => {
-    if (eventStarted) return;
-    const res = await fetch('/selections', {
+    if (eventStarted || !selectedRace) return;
+    const res = await fetch(`/races/${selectedRace.id}/selections`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -134,94 +152,98 @@ function App() {
   }
 
   return (
-    <div>
-      <nav style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-        <button onClick={() => setView('main')} disabled={view === 'main'}>Mitt lag</button>
-        <button onClick={() => setView('leaderboard')} disabled={view === 'leaderboard'}>Leaderboard</button>
-      </nav>
-      {view === 'leaderboard' ? (
-        <Leaderboard />
-      ) : (
+    <div className="app-container">
+      <RaceOverview selectedRace={selectedRace} onSelect={setSelectedRace} />
+      {selectedRace && (
         <>
-          <div style={{ fontSize: 18, marginBottom: 16, color: eventStarted ? 'red' : 'inherit' }}>{getCountdown()}</div>
-          <p>{user.name || user.email}</p>
-          
-          <form onSubmit={handleNicknameSubmit} style={{ marginBottom: 16 }}>
-            <label htmlFor="nickname">Kallenavn: </label>
-            <input
-              id="nickname"
-              type="text"
-              value={nickname}
-              onChange={handleNicknameChange}
-              minLength={2}
-              maxLength={32}
-              style={{ marginRight: 8 }}
-            />
-            <button type="submit">Lagre</button>
-            {nicknameSaved && <span style={{ color: 'green', marginLeft: 8 }}>Lagret!</span>}
-          </form>
-          <div className="runner-wrapper">
-            <Runners onSelect={handleSelect} top10={top10} eventStarted={eventStarted} />
-            <div className="selected-runners">
-              <h3>Dine topp 10</h3>
-              <DragDropContext onDragEnd={onDragEnd}>
-                <Droppable droppableId="top10">
-                  {(provided) => (
-                    <ol
-                      {...provided.droppableProps}
-                      ref={provided.innerRef}
-                      style={{ listStyle: 'decimal', padding: 0 }}
-                    >
-                      {top10.length === 0 ? (
-                        <li style={{ color: '#aaa', textAlign: 'center' }}>Ingen løpere valgt ennå.</li>
-                      ) : (
-                        top10.map((id, idx) => (
-                          <Draggable key={id} draggableId={String(id)} index={idx}>
-                            {(provided) => (
-                              <li
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                style={{
-                                  ...provided.draggableProps.style,
-                                  marginBottom: 8,
-                                  background: '#f9f9f9',
-                                  padding: 8
-                                }}
-                              >
-                                <span style={{ marginRight: 8 }}>
-                                  {idx === 0 && <FaTrophy color="#FFD700" title="1. plass" />}
-                                  {idx === 1 && <FaTrophy color="#C0C0C0" title="2. plass" />}
-                                  {idx === 2 && <FaTrophy color="#CD7F32" title="3. plass" />}
-                                  {idx > 2 && <span>{idx + 1}.</span>}
-                                </span>
-                                {getRunnerName(id)}
-                                <div style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>
-                                  <button onClick={() => moveUp(idx)} disabled={eventStarted || idx === 0} aria-label="Flytt opp">
-                                    <FaArrowUp />
-                                  </button>
-                                  <button onClick={() => moveDown(idx)} disabled={eventStarted || idx === top10.length - 1} aria-label="Flytt ned">
-                                    <FaArrowDown />
-                                  </button>
-                                  <button onClick={() => handleRemove(id)} style={{ marginLeft: 8 }} aria-label="Fjern" disabled={eventStarted}>
-                                    <FaTrash />
-                                  </button>
-                                </div>
-                              </li>
-                            )}
-                          </Draggable>
-                        ))
+          <nav style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+            <button onClick={() => setView('main')} disabled={view === 'main'}>Mitt lag</button>
+            <button onClick={() => setView('leaderboard')} disabled={view === 'leaderboard'}>Leaderboard</button>
+          </nav>
+          {view === 'leaderboard' ? (
+            <Leaderboard raceId={selectedRace.id} />
+          ) : (
+            <>
+              <div style={{ fontSize: 18, marginBottom: 16, color: eventStarted ? 'red' : 'inherit' }}>{getCountdown()}</div>
+              <h2>Velkommen, {user.name || user.email}!</h2>
+              <form onSubmit={handleNicknameSubmit} style={{ marginBottom: 16 }}>
+                <label htmlFor="nickname">Kallenavn: </label>
+                <input
+                  id="nickname"
+                  type="text"
+                  value={nickname}
+                  onChange={handleNicknameChange}
+                  minLength={2}
+                  maxLength={32}
+                  style={{ marginRight: 8 }}
+                />
+                <button type="submit">Lagre</button>
+                {nicknameSaved && <span style={{ color: 'green', marginLeft: 8 }}>Lagret!</span>}
+              </form>
+              <div className="runner-wrapper">
+                <Runners onSelect={handleSelect} top10={top10} eventStarted={eventStarted} raceId={selectedRace.id} />
+                <div className="selected-runners">
+                  <h3>Dine topp 10</h3>
+                  <DragDropContext onDragEnd={onDragEnd}>
+                    <Droppable droppableId="top10">
+                      {(provided) => (
+                        <ol
+                          {...provided.droppableProps}
+                          ref={provided.innerRef}
+                          style={{ listStyle: 'decimal', padding: 0 }}
+                        >
+                          {top10.length === 0 ? (
+                            <li style={{ color: '#aaa', textAlign: 'center' }}>Ingen løpere valgt ennå.</li>
+                          ) : (
+                            top10.map((id, idx) => (
+                              <Draggable key={id} draggableId={String(id)} index={idx}>
+                                {(provided) => (
+                                  <li
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    style={{
+                                      ...provided.draggableProps.style,
+                                      marginBottom: 8,
+                                      background: '#f9f9f9',
+                                      padding: 8
+                                    }}
+                                  >
+                                    <span style={{ marginRight: 8 }}>
+                                      {idx === 0 && <FaTrophy color="#FFD700" title="1. plass" />}
+                                      {idx === 1 && <FaTrophy color="#C0C0C0" title="2. plass" />}
+                                      {idx === 2 && <FaTrophy color="#CD7F32" title="3. plass" />}
+                                      {idx > 2 && <span>{idx + 1}.</span>}
+                                    </span>
+                                    {getRunnerName(id)}
+                                    <div style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>
+                                      <button onClick={() => moveUp(idx)} disabled={eventStarted || idx === 0} aria-label="Flytt opp">
+                                        <FaArrowUp />
+                                      </button>
+                                      <button onClick={() => moveDown(idx)} disabled={eventStarted || idx === top10.length - 1} aria-label="Flytt ned">
+                                        <FaArrowDown />
+                                      </button>
+                                      <button onClick={() => handleRemove(id)} style={{ marginLeft: 8 }} aria-label="Fjern" disabled={eventStarted}>
+                                        <FaTrash />
+                                      </button>
+                                    </div>
+                                  </li>
+                                )}
+                              </Draggable>
+                            ))
+                          )}
+                          {provided.placeholder}
+                        </ol>
                       )}
-                      {provided.placeholder}
-                    </ol>
-                  )}
-                </Droppable>
-              </DragDropContext>
-              <button onClick={handleSubmit} disabled={top10.length !== 10 || eventStarted}>
-                Send inn topp 10
-              </button>
-            </div>
-          </div>
+                    </Droppable>
+                  </DragDropContext>
+                  <button onClick={handleSubmit} disabled={top10.length !== 10 || eventStarted}>
+                    Send inn topp 10
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
