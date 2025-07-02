@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  googleId      String   @unique
+  email         String   @unique
+  name          String?
+  nickname      String?
+  selections    Selection[]
+  createdAt     DateTime @default(now())
+}
+
+model Runner {
+  id         String   @id @default(uuid())
+  firstname  String
+  lastname   String
+  gender     String
+  distance   String
+  category   String
+  selections Selection[]
+}
+
+model Selection {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  runner    Runner   @relation(fields: [runnerId], references: [id])
+  runnerId  String
+  rank      Int      // 1-10 for top 10
+  createdAt DateTime @default(now())
+
+  @@unique([userId, rank]) // Each user can only have one runner per rank
+}

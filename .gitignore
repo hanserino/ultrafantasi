@@ -1,0 +1,38 @@
+# Node
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# dotenv environment variables
+.env
+.env.*
+
+# Build output
+frontend/dist/
+frontend/build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+backend/generated/
+backend/prisma/dev.db
+
+# Vite
+frontend/.vite/
+
+# Misc
+*.local
+.idea/
+.vscode/
+
+# Coverage
+coverage/
+
+# Optional: ignore SQLite DBs
+*.sqlite 
