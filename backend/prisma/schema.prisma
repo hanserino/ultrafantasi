@@ -22,26 +22,58 @@ model User {
   nickname      String?
   selections    Selection[]
   createdAt     DateTime @default(now())
+  claimedRunners Runner[] @relation("UserClaimedRunners")
+}
+
+model Race {
+  id          String    @id @default(uuid())
+  name        String
+  date        DateTime
+  status      String    // e.g. 'upcoming', 'finished'
+  runners     Runner[]  @relation("RaceRunners")
+  selections  Selection[]
+  officialResult OfficialResult?
+  createdAt   DateTime @default(now())
 }
 
 model Runner {
-  id         String   @id @default(uuid())
-  firstname  String
-  lastname   String
-  gender     String
-  distance   String
-  category   String
+  id        String   @id @default(uuid())
+  firstname String
+  lastname  String
+  gender    String
+  distance  String
+  category  String
+  instagram String  @default("") // Instagram profile link
+  strava    String  @default("") // Strava profile link or ID
+  duv       String  @default("") // DUV profile link
+  utmb      String  @default("") // UTMB profile link or ID
+  itra      String  @default("") // ITRA profile link or ID
+  neda      String  @default("") // NEDA profile link or ID
+  profilePicture String? // Path or URL to profile picture
+  races     Race[]  @relation("RaceRunners")
   selections Selection[]
+  claimedByUserId String? // User who claimed this runner
+  claimedByUser   User?   @relation("UserClaimedRunners", fields: [claimedByUserId], references: [id])
+}
+
+model OfficialResult {
+  id        String   @id @default(uuid())
+  race      Race     @relation(fields: [raceId], references: [id])
+  raceId    String   @unique
+  top10     String[] // Array of runner IDs in order
+  createdAt DateTime @default(now())
 }
 
 model Selection {
   id        String   @id @default(uuid())
   user      User     @relation(fields: [userId], references: [id])
   userId    String
+  race      Race     @relation(fields: [raceId], references: [id])
+  raceId    String
   runner    Runner   @relation(fields: [runnerId], references: [id])
   runnerId  String
   rank      Int      // 1-10 for top 10
   createdAt DateTime @default(now())
 
-  @@unique([userId, rank]) // Each user can only have one runner per rank
+  @@unique([userId, raceId, rank]) // Each user can only have one runner per rank per race
 }
