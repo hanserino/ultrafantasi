@@ -2,13 +2,58 @@ import React, { useEffect, useState } from 'react';
 import { FaPlus } from 'react-icons/fa';
 import { FaChevronDown, FaInstagram, FaStrava, FaLink } from 'react-icons/fa';
 import { FiMoreVertical } from 'react-icons/fi';
+import { styled } from './stitches.config';
 
 const PLACEHOLDER_MALE = 'data:image/svg+xml;utf8,<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23b3c6ff"/><text x="50%" y="54%" text-anchor="middle" fill="%23555" font-size="48" font-family="Arial" dy=".3em">👦</text></svg>';
 const PLACEHOLDER_FEMALE = 'data:image/svg+xml;utf8,<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23ffb3d1"/><text x="50%" y="54%" text-anchor="middle" fill="%23555" font-size="48" font-family="Arial" dy=".3em">👧</text></svg>';
 const PLACEHOLDER_NEUTRAL = 'data:image/svg+xml;utf8,<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23ddd"/><text x="50%" y="54%" text-anchor="middle" fill="%23999" font-size="48" font-family="Arial" dy=".3em">👤</text></svg>';
 
-function Runners({ onSelect, top10, eventStarted, raceId }) {
-  const [runners, setRunners] = useState([]);
+// Styled components
+const RunnerPool = styled('div', {
+  marginBottom: 24,
+});
+const RunnerList = styled('ul', {
+  listStyle: 'none',
+  padding: 0,
+  margin: 0,
+});
+const RunnerItem = styled('li', {
+  display: 'flex',
+  alignItems: 'center',
+  padding: '12px 8px',
+  borderBottom: '1px solid #eee',
+  background: '#fff',
+  borderRadius: 8,
+  marginBottom: 8,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
+  position: 'relative',
+});
+const ProfileImg = styled('img', {
+  width: 48,
+  height: 48,
+  objectFit: 'cover',
+  borderRadius: '50%',
+  marginRight: 12,
+  background: '#fff',
+  flexShrink: 0,
+  border: '2px solid $secondary',
+});
+const AddButton = styled('button', {
+  marginLeft: 8,
+  background: '$primary',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 6,
+  padding: '6px 10px',
+  cursor: 'pointer',
+  fontWeight: 600,
+  '&:disabled': {
+    background: '#ccc',
+    cursor: 'not-allowed',
+  },
+});
+
+function Runners({ runners, onSelect, top10, eventStarted, raceId }) {
   const [openDropdown, setOpenDropdown] = useState(null);
   const [user, setUser] = useState(null);
   const [claiming, setClaiming] = useState(null);
@@ -30,14 +75,6 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
       .then(setUser);
   }, []);
 
-  useEffect(() => {
-    if (!raceId) return setRunners([]);
-    fetch(`/races/${raceId}/runners`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(setRunners)
-      .catch(() => setRunners([]));
-  }, [raceId, claiming, editModalOpen]);
-    
   const isDisabled = (runnerId) => eventStarted || top10.length >= 10 || top10.includes(runnerId);
 
   // Check if the user has already claimed a runner
@@ -52,7 +89,14 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
       // Refetch runners
       fetch(`/races/${raceId}/runners`, { credentials: 'include' })
         .then(res => res.json())
-        .then(setRunners);
+        .then(runners => {
+          // Update the runners state with the new claimed runner
+          const updatedRunners = runners.map(r =>
+            r.id === runnerId ? { ...r, claimedByUserId: user?.id } : r
+          );
+          // Update the runners state with the new claimed runner
+          runners = updatedRunners;
+        });
     } else {
       const err = await res.json();
       setClaimError(err.error || 'Kunne ikke kreve løper');
@@ -146,7 +190,14 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
       setMenuOpenId(null);
       fetch(`/races/${raceId}/runners`, { credentials: 'include' })
         .then(res => res.json())
-        .then(setRunners);
+        .then(runners => {
+          // Update the runners state with the new unclaimed runner
+          const updatedRunners = runners.map(r =>
+            r.id === runnerId ? { ...r, claimedByUserId: null } : r
+          );
+          // Update the runners state with the new unclaimed runner
+          runners = updatedRunners;
+        });
     } else {
       const err = await res.json();
       setClaimError(err.error || 'Kunne ikke fjerne krav på løper');
@@ -239,10 +290,10 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
   if (!raceId) return null;
 
   return (
-    <div className="runner-pool">
+    <RunnerPool>
       <h3>Løpere</h3>
       {claimError && <div style={{ color: 'red', marginBottom: 8 }}>{claimError}</div>}
-      <ul className="runner-pool__list">
+      <RunnerList>
         {runners.map(runner => {
           const disabled = isDisabled(runner.id);
           const isClaimed = !!runner.claimedByUserId;
@@ -258,7 +309,7 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
                 : PLACEHOLDER_NEUTRAL;
           const borderColor = hasSocialMedia(runner) ? '2px solid #2ecc40' : '2px solid #ccc';
           return (
-            <li key={runner.id} style={{ color: disabled ? '#aaa' : 'inherit', position: 'relative', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <RunnerItem key={runner.id}>
               <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                 {hasSocialMedia(runner) ? (
                   <button
@@ -311,14 +362,13 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
                   />
                 )}
                 <span>{runner.firstname} {runner.lastname}</span>
-                <button
+                <AddButton
                   onClick={e => { e.stopPropagation(); onSelect(runner.id); }}
-                  style={{ marginLeft: 8 }}
                   disabled={disabled}
                   aria-label="Legg til i topp 10"
                 >
                   <FaPlus />
-                </button>
+                </AddButton>
                 {/* Claim status and edit button */}
                 {isClaimed && claimedByYou && (
                   <>
@@ -376,10 +426,10 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
                   </ul>
                 </div>
               )}
-            </li>
+            </RunnerItem>
           );
         })}
-      </ul>
+      </RunnerList>
       {/* Edit Modal */}
       {editModalOpen && (
         <div className="modal-backdrop" style={{
@@ -455,7 +505,7 @@ function Runners({ onSelect, top10, eventStarted, raceId }) {
           </div>
         </div>
       )}
-    </div>
+    </RunnerPool>
   );
 }
 

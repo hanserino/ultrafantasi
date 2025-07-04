@@ -7,11 +7,108 @@ import { FaTrophy, FaArrowUp, FaArrowDown, FaTrash } from 'react-icons/fa';
 import Leaderboard from './Leaderboard';
 import RaceOverview from './RaceOverview';
 import AdminPage from './AdminPage';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { styled } from './stitches.config';
+import RacePage from './RacePage';
+import LeaderboardPage from './LeaderboardPage';
+import { FiEdit2 } from 'react-icons/fi';
+
 
 const PLACEHOLDER_MALE = 'data:image/svg+xml;utf8,<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23b3c6ff"/><text x="50%" y="54%" text-anchor="middle" fill="%23555" font-size="48" font-family="Arial" dy=".3em">👦</text></svg>';
 const PLACEHOLDER_FEMALE = 'data:image/svg+xml;utf8,<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23ffb3d1"/><text x="50%" y="54%" text-anchor="middle" fill="%23555" font-size="48" font-family="Arial" dy=".3em">👧</text></svg>';
 const PLACEHOLDER_NEUTRAL = 'data:image/svg+xml;utf8,<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23ddd"/><text x="50%" y="54%" text-anchor="middle" fill="%23999" font-size="48" font-family="Arial" dy=".3em">👤</text></svg>';
+
+// Styled components for top 10 list
+const SelectedRunners = styled('div', {
+  background: '#fff',
+  borderRadius: 8,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+  padding: 20,
+  marginLeft: 24,
+  minWidth: 320,
+  maxWidth: 400,
+});
+const Top10List = styled('ol', {
+  listStyle: 'decimal',
+  padding: 0,
+  margin: 0,
+});
+const Top10Item = styled('li', {
+  display: 'flex',
+  alignItems: 'center',
+  marginBottom: 8,
+  background: '#f9f9f9',
+  padding: 8,
+  borderRadius: 6,
+  fontSize: 16,
+});
+const Top10Img = styled('img', {
+  width: 32,
+  height: 32,
+  objectFit: 'cover',
+  borderRadius: '50%',
+  marginRight: 8,
+  verticalAlign: 'middle',
+  background: '#fff',
+  border: '1px solid #ccc',
+});
+const Top10Actions = styled('div', {
+  display: 'inline-flex',
+  gap: 4,
+  marginLeft: 8,
+});
+
+// Add a styled top navigation bar
+const TopNav = styled('nav', {
+  width: '100%',
+  background: '#fff',
+  borderBottom: '1px solid #eee',
+  padding: '12px 0',
+  marginBottom: 24,
+  display: 'flex',
+  justifyContent: 'center',
+  gap: 32,
+  position: 'sticky',
+  top: 0,
+  zIndex: 100,
+});
+const NavLink = styled(Link, {
+  color: '$secondary',
+  textDecoration: 'none',
+  fontWeight: 600,
+  fontSize: 18,
+  padding: '6px 18px',
+  borderRadius: 6,
+  '&.active': {
+    background: '$primary',
+    color: '#fff',
+  },
+  '&:hover': {
+    background: '#f6f6f6',
+  },
+});
+
+const UserInfo = styled('div', {
+  display: 'flex',
+  alignItems: 'center',
+  position: 'absolute',
+  right: 24,
+  top: 10,
+  gap: 10,
+  background: 'rgba(255,255,255,0.95)',
+  padding: '4px 12px',
+  borderRadius: 8,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+  zIndex: 101,
+});
+const UserImg = styled('img', {
+  width: 36,
+  height: 36,
+  borderRadius: '50%',
+  objectFit: 'cover',
+  border: '2px solid #eee',
+  background: '#fff',
+});
 
 function App() {
   const [user, setUser] = useState(null);
@@ -26,6 +123,18 @@ function App() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const shareListRef = useRef(null);
+  const location = useLocation();
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileEditFields, setProfileEditFields] = useState({});
+  const [profilePicFile, setProfilePicFile] = useState(null);
+  const [profilePicPreview, setProfilePicPreview] = useState(null);
+  const [profilePicUploading, setProfilePicUploading] = useState(false);
+  const [profilePicError, setProfilePicError] = useState("");
+  const [profileEditSaving, setProfileEditSaving] = useState(false);
+  const [profileEditMessage, setProfileEditMessage] = useState("");
+
+  // Find claimed runner for this user
+  const claimedRunner = user && runners.find(r => r.claimedByUserId === user.id);
 
   useEffect(() => {
     fetch('/auth/me', { credentials: 'include' })
@@ -226,134 +335,217 @@ function App() {
     };
   }, [shareModalOpen]);
 
+  // Open modal with claimed runner's data
+  const openProfileModal = () => {
+    if (!claimedRunner) return;
+    setProfileEditFields({ ...claimedRunner });
+    setProfileModalOpen(true);
+    setProfilePicFile(null);
+    setProfilePicPreview(null);
+    setProfilePicUploading(false);
+    setProfilePicError("");
+    setProfileEditMessage("");
+  };
+  const closeProfileModal = () => {
+    setProfileModalOpen(false);
+    setProfileEditFields({});
+    setProfilePicFile(null);
+    setProfilePicPreview(null);
+    setProfilePicUploading(false);
+    setProfilePicError("");
+    setProfileEditMessage("");
+  };
+  const handleProfileEditChange = (field, value) => {
+    setProfileEditFields(f => ({ ...f, [field]: value }));
+  };
+  const handleProfileEditSave = async (e) => {
+    e.preventDefault();
+    setProfileEditSaving(true);
+    setProfileEditMessage("");
+    const res = await fetch(`/runners/${profileEditFields.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        firstname: profileEditFields.firstname,
+        lastname: profileEditFields.lastname,
+        gender: profileEditFields.gender,
+        instagram: profileEditFields.instagram,
+        strava: profileEditFields.strava,
+        duv: profileEditFields.duv,
+        utmb: profileEditFields.utmb,
+        itra: profileEditFields.itra,
+        neda: profileEditFields.neda,
+      })
+    });
+    setProfileEditSaving(false);
+    if (res.ok) {
+      setProfileEditMessage('Endringer lagret!');
+      // Refetch runners and user immediately
+      fetch('/runners').then(res => res.json()).then(setRunners);
+      fetch('/auth/me', { credentials: 'include' }).then(res => res.ok ? res.json() : null).then(setUser);
+      setTimeout(() => {
+        closeProfileModal();
+      }, 1000);
+    } else {
+      const err = await res.json();
+      setProfileEditMessage(err.error || 'Kunne ikke lagre endringer');
+    }
+  };
+  // Profile picture preview logic
+  useEffect(() => {
+    if (!profilePicFile) {
+      setProfilePicPreview(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => setProfilePicPreview(reader.result);
+    reader.readAsDataURL(profilePicFile);
+    return () => reader.abort();
+  }, [profilePicFile]);
+  const handleProfilePicChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setProfilePicError('Bare bildefiler er tillatt');
+      return;
+    }
+    setProfilePicFile(file);
+    setProfilePicError("");
+  };
+  const handleProfilePicUpload = async (e) => {
+    e.preventDefault();
+    if (!profilePicFile) return;
+    setProfilePicUploading(true);
+    setProfilePicError("");
+    const formData = new FormData();
+    formData.append('profilePicture', profilePicFile);
+    const res = await fetch(`/runners/${profileEditFields.id}/profile-picture`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+    setProfilePicUploading(false);
+    if (res.ok) {
+      const data = await res.json();
+      setProfileEditFields(f => ({ ...f, profilePicture: data.runner.profilePicture }));
+      setProfilePicFile(null);
+      setProfilePicPreview(null);
+      setProfilePicError("");
+      // Refetch user to update profile picture
+      fetch('/auth/me', { credentials: 'include' }).then(res => res.ok ? res.json() : null).then(setUser);
+    } else {
+      const err = await res.json();
+      setProfilePicError(err.error || 'Kunne ikke laste opp bilde');
+    }
+  };
+
   return (
-    <Routes>
-      <Route path="/admin" element={<AdminPage />} />
-      <Route path="/" element={
-        !user || user.error ? <Login /> :
-        user.email !== 'eplehans@gmail.com' ? <div>Du har ikke tilgang til denne siden.</div> :
-        <div className="app-container">
-          <RaceOverview selectedRace={selectedRace} onSelect={setSelectedRace} />
-          {selectedRace && (
-            <>
-              <nav style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-                <button onClick={() => setView('main')} disabled={view === 'main'}>Mitt lag</button>
-                <button onClick={() => setView('leaderboard')} disabled={view === 'leaderboard'}>Leaderboard</button>
-              </nav>
-              {view === 'leaderboard' ? (
-                <Leaderboard raceId={selectedRace.id} />
-              ) : (
-                <>
-                  <div style={{ fontSize: 18, marginBottom: 16, color: eventStarted ? 'red' : 'inherit' }}>{getCountdown()}</div>
-                  <h2>Velkommen, {user.name || user.email}!</h2>
-                  <form onSubmit={handleNicknameSubmit} style={{ marginBottom: 16 }}>
-                    <label htmlFor="nickname">Kallenavn: </label>
-                    <input
-                      id="nickname"
-                      type="text"
-                      value={nickname}
-                      onChange={handleNicknameChange}
-                      minLength={2}
-                      maxLength={32}
-                      style={{ marginRight: 8 }}
-                    />
-                    <button type="submit">Lagre</button>
-                    {nicknameSaved && <span style={{ color: 'green', marginLeft: 8 }}>Lagret!</span>}
-                  </form>
-                  <div className="runner-wrapper">
-                    <Runners onSelect={handleSelect} top10={top10} eventStarted={eventStarted} raceId={selectedRace.id} />
-                    <div className="selected-runners">
-                      <h3>Dine topp 10</h3>
-                      <DragDropContext onDragEnd={onDragEnd}>
-                        <Droppable droppableId="top10">
-                          {(provided) => (
-                            <ol
-                              {...provided.droppableProps}
-                              ref={provided.innerRef}
-                              style={{ listStyle: 'decimal', padding: 0 }}
-                            >
-                              {top10.length === 0 ? (
-                                <li style={{ color: '#aaa', textAlign: 'center' }}>Ingen løpere valgt ennå.</li>
-                              ) : (
-                                top10.map((id, idx) => (
-                                  <Draggable key={id} draggableId={String(id)} index={idx}>
-                                    {(provided) => (
-                                      <li
-                                        ref={provided.innerRef}
-                                        {...provided.draggableProps}
-                                        {...provided.dragHandleProps}
-                                        style={{
-                                          ...provided.draggableProps.style,
-                                          marginBottom: 8,
-                                          background: '#f9f9f9',
-                                          padding: 8
-                                        }}
-                                      >
-                                        <span style={{ marginRight: 8 }}>
-                                          {idx === 0 && <FaTrophy color="#FFD700" title="1. plass" />}
-                                          {idx === 1 && <FaTrophy color="#C0C0C0" title="2. plass" />}
-                                          {idx === 2 && <FaTrophy color="#CD7F32" title="3. plass" />}
-                                          {idx > 2 && <span>{idx + 1}.</span>}
-                                        </span>
-                                        <img src={getRunnerInfo(id).imgSrc} alt="Profilbilde" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: '50%', marginRight: 8, verticalAlign: 'middle', background: '#fff', border: '1px solid #ccc' }} />
-                                        {getRunnerInfo(id).name}
-                                        <div style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>
-                                          <button onClick={() => moveUp(idx)} disabled={eventStarted || idx === 0} aria-label="Flytt opp">
-                                            <FaArrowUp />
-                                          </button>
-                                          <button onClick={() => moveDown(idx)} disabled={eventStarted || idx === top10.length - 1} aria-label="Flytt ned">
-                                            <FaArrowDown />
-                                          </button>
-                                          <button onClick={() => handleRemove(id)} style={{ marginLeft: 8 }} aria-label="Fjern" disabled={eventStarted}>
-                                            <FaTrash />
-                                          </button>
-                                        </div>
-                                      </li>
-                                    )}
-                                  </Draggable>
-                                ))
-                              )}
-                              {provided.placeholder}
-                            </ol>
-                          )}
-                        </Droppable>
-                      </DragDropContext>
-                      <button onClick={handleSubmit} disabled={top10.length !== 10 || eventStarted}>
-                        Send inn topp 10
-                      </button>
-                      <button onClick={() => setShareModalOpen(true)} style={{ marginLeft: 8 }}>Del</button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-          {shareModalOpen && (
-            <div className="share-modal-backdrop" style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              width: '100vw',
-              height: '100vh',
-              background: 'rgba(0,0,0,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000
-            }}>
-              <div style={{ background: '#fff', padding: 32, borderRadius: 8, minWidth: 320, maxWidth: '90vw', position: 'relative', boxShadow: '0 2px 16px rgba(0,0,0,0.15)' }}>
-                <button onClick={() => setShareModalOpen(false)} style={{ position: 'absolute', top: 8, right: 8, fontSize: 20, background: 'none', border: 'none', cursor: 'pointer' }} aria-label="Lukk">&times;</button>
-                <h3>Del dine topp 10-kandidater</h3>
-                <div style={{ marginBottom: 12, color: shareCopied ? 'green' : '#333', fontWeight: 500 }}>
-                  {shareCopied ? 'Listen er kopiert til utklippstavlen!' : 'Kopierer...'}
-                </div>
-                <pre ref={shareListRef} style={{ background: '#f6f6f6', border: '1px solid #ccc', borderRadius: 6, padding: 16, fontSize: 16, fontFamily: 'inherit', outline: '2px solid #2ecc40', userSelect: 'all', margin: 0 }}>{getShareList()}</pre>
+    <>
+      {/* Only show nav if user is logged in and has access */}
+      {user && !user.error && user.email === 'eplehans@gmail.com' && (
+        <TopNav style={{position:'relative'}}>
+          <NavLink to="/races" className={location.pathname.startsWith('/races') ? 'active' : ''}>Race Overview</NavLink>
+          <NavLink to="/leaderboard" className={location.pathname.startsWith('/leaderboard') ? 'active' : ''}>Leaderboard</NavLink>
+          <UserInfo>
+            <span style={{fontWeight:600, fontSize:16}}>{user.nickname || user.name || user.email}</span>
+            <UserImg
+              src={user.profilePicture ? `${window.location.origin}/uploads/${user.profilePicture}` : PLACEHOLDER_NEUTRAL}
+              alt="Profile"
+              style={{ cursor: claimedRunner ? 'pointer' : 'default' }}
+              onClick={claimedRunner ? openProfileModal : undefined}
+              title={claimedRunner ? 'Rediger profil' : ''}
+            />
+          </UserInfo>
+        </TopNav>
+      )}
+      {/* Profile Edit Modal (same as claimed runner edit) */}
+      {profileModalOpen && claimedRunner && (
+        <div className="modal-backdrop" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{ background: '#fff', padding: 32, borderRadius: 8, minWidth: 400, maxWidth: '90vw', position: 'relative' }}>
+            <button onClick={closeProfileModal} style={{ position: 'absolute', top: 8, right: 8, fontSize: 20, background: 'none', border: 'none', cursor: 'pointer' }} aria-label="Lukk">&times;</button>
+            <h3>Rediger profil</h3>
+            <form onSubmit={handleProfileEditSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Profile picture section */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 6, fontWeight: 500 }}>Profilbilde:</div>
+                {profileEditFields.profilePicture && !profilePicPreview && (
+                  <img src={`/uploads/${profileEditFields.profilePicture}`} alt="Profilbilde" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: '50%', border: '1px solid #ccc', marginBottom: 8 }} />
+                )}
+                {profilePicPreview && (
+                  <img src={profilePicPreview} alt="Forhåndsvisning" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: '50%', border: '1px solid #ccc', marginBottom: 8 }} />
+                )}
+                <input type="file" accept="image/*" onChange={handleProfilePicChange} style={{ marginBottom: 8 }} />
+                <button type="button" onClick={handleProfilePicUpload} disabled={!profilePicFile || profilePicUploading} style={{ marginBottom: 4 }}>
+                  {profilePicUploading ? 'Laster opp...' : 'Last opp bilde'}
+                </button>
+                {profilePicError && <div style={{ color: 'red' }}>{profilePicError}</div>}
               </div>
-            </div>
-          )}
+              <label>
+                Fornavn:
+                <input type="text" value={profileEditFields.firstname || ''} onChange={e => handleProfileEditChange('firstname', e.target.value)} required />
+              </label>
+              <label>
+                Etternavn:
+                <input type="text" value={profileEditFields.lastname || ''} onChange={e => handleProfileEditChange('lastname', e.target.value)} required />
+              </label>
+              <label>
+                Kjønn:
+                <select value={profileEditFields.gender || ''} onChange={e => handleProfileEditChange('gender', e.target.value)} required>
+                  <option value="">Velg kjønn...</option>
+                  <option value="f">Kvinne</option>
+                  <option value="m">Mann</option>
+                </select>
+              </label>
+              <label>
+                Instagram:
+                <input type="text" value={profileEditFields.instagram || ''} onChange={e => handleProfileEditChange('instagram', e.target.value)} placeholder="@brukernavn" />
+              </label>
+              <label>
+                Strava:
+                <input type="text" value={profileEditFields.strava || ''} onChange={e => handleProfileEditChange('strava', e.target.value)} placeholder="https://www.strava.com/athletes/10448277" />
+              </label>
+              <label>
+                DUV:
+                <input type="text" value={profileEditFields.duv || ''} onChange={e => handleProfileEditChange('duv', e.target.value)} placeholder="https://statistik.d-u-v.org/getresultperson.php?runner=439692" />
+              </label>
+              <label>
+                UTMB:
+                <input type="text" value={profileEditFields.utmb || ''} onChange={e => handleProfileEditChange('utmb', e.target.value)} placeholder="https://utmb.world/runner/676108.hanskristian.smedsrod" />
+              </label>
+              <label>
+                ITRA:
+                <input type="text" value={profileEditFields.itra || ''} onChange={e => handleProfileEditChange('itra', e.target.value)} placeholder="https://itra.run/api/RunnerSpace/GetRunnerSpace?memberString=ll0jIevnXbxYRpfoGttA9A%3D%3D" />
+              </label>
+              <button type="submit" disabled={profileEditSaving}>{profileEditSaving ? 'Lagrer...' : 'Lagre endringer'}</button>
+              {profileEditMessage && <div style={{ color: profileEditMessage.includes('ikke') ? 'red' : 'green' }}>{profileEditMessage}</div>}
+            </form>
+          </div>
         </div>
-      } />
-    </Routes>
+      )}
+      <Routes>
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/races" element={<RaceOverview />} />
+        <Route path="/races/:raceId" element={<RacePage user={user} />} />
+        <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/" element={
+          !user || user.error ? <Login /> :
+          user.email !== 'eplehans@gmail.com' ? <div>Du har ikke tilgang til denne siden.</div> :
+          <Navigate to="/races" replace />
+        } />
+      </Routes>
+    </>
   );
 }
 

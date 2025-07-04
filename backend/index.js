@@ -1,3 +1,4 @@
+console.log('Backend index.js starting...');
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -8,6 +9,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const stringSimilarity = require('string-similarity');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -45,10 +47,13 @@ passport.serializeUser((user, done) => {
 });
 
 passport.deserializeUser(async (id, done) => {
+  console.log('[deserializeUser] Called with id:', id);
   try {
     const user = await prisma.user.findUnique({ where: { id } });
+    console.log('[deserializeUser] Found user:', user);
     done(null, user);
   } catch (err) {
+    console.error('[deserializeUser] Error:', err);
     done(err, null);
   }
 });
@@ -124,83 +129,6 @@ app.get('/runners', async (req, res) => {
   }
 });
 
-// Add runners to a race (with global runner merge)
-app.post('/races/:raceId/runners', async (req, res) => {
-  const { raceId } = req.params;
-  let runners = req.body;
-  if (!Array.isArray(runners)) runners = [runners];
-  const createdOrLinked = [];
-  for (const r of runners) {
-    if (!r.firstname || !r.lastname || !r.gender || !r.distance || !r.category) {
-      return res.status(400).json({ error: 'Mangler påkrevde felter for en eller flere løpere' });
-    }
-    // Default all metadata fields to empty string if missing
-    const meta = {
-      instagram: r.instagram ?? "",
-      strava: r.strava ?? "",
-      duv: r.duv ?? "",
-      utmb: r.utmb ?? "",
-      itra: r.itra ?? "",
-      neda: r.neda ?? "",
-    };
-    // Try to find existing runner by name, gender, and optionally social links
-    let existing = await prisma.runner.findFirst({
-      where: {
-        firstname: r.firstname,
-        lastname: r.lastname,
-        gender: r.gender,
-      },
-    });
-    if (existing) {
-      // Optionally update social links if new info is provided
-      const updateData = {};
-      if (meta.instagram && !existing.instagram) updateData.instagram = meta.instagram;
-      if (meta.strava && !existing.strava) updateData.strava = meta.strava;
-      if (meta.duv && !existing.duv) updateData.duv = meta.duv;
-      if (meta.utmb && !existing.utmb) updateData.utmb = meta.utmb;
-      if (meta.itra && !existing.itra) updateData.itra = meta.itra;
-      if (meta.neda && !existing.neda) updateData.neda = meta.neda;
-      if (Object.keys(updateData).length > 0) {
-        existing = await prisma.runner.update({ where: { id: existing.id }, data: updateData });
-      }
-      // Link runner to race if not already linked
-      await prisma.race.update({
-        where: { id: raceId },
-        data: { runners: { connect: { id: existing.id } } },
-      });
-      createdOrLinked.push(existing);
-    } else {
-      // Create new runner and link to race
-      const newRunner = await prisma.runner.create({
-        data: {
-          firstname: r.firstname,
-          lastname: r.lastname,
-          gender: r.gender,
-          distance: r.distance.toString(),
-          category: r.category,
-          ...meta,
-          races: { connect: { id: raceId } },
-        },
-      });
-      createdOrLinked.push(newRunner);
-    }
-  }
-  res.status(201).json({ success: true, runners: createdOrLinked });
-});
-
-// List runners for a specific race
-app.get('/races/:raceId/runners', async (req, res) => {
-  const { raceId } = req.params;
-  try {
-    const race = await prisma.race.findUnique({
-      where: { id: raceId },
-      include: { runners: true },
-    });
-    res.json(race ? race.runners : []);
-  } catch (err) {
-    res.status(500).json({ error: 'Kunne ikke hente løpere' });
-  }
-});
 
 // Get the authenticated user's top 10 selection
 app.get('/selections/me', isAuthenticated, async (req, res) => {
@@ -215,7 +143,6 @@ app.get('/selections/me', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch selections' });
   }
 });
-
 
 // Get the authenticated user's top 10 selection for a race
 app.get('/races/:raceId/selections/me', isAuthenticated, async (req, res) => {
@@ -268,8 +195,8 @@ app.post('/me/nickname', isAuthenticated, async (req, res) => {
   }
 });
 
-// Leaderboard: show all users' top 10 selections (nickname if set, else name, else 'Anonym')
-app.get('/leaderboard', isAuthenticated, async (req, res) => {
+// Global leaderboard: all users, total points, and per-race breakdown
+app.get('/leaderboard', async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       include: {
@@ -279,22 +206,38 @@ app.get('/leaderboard', isAuthenticated, async (req, res) => {
         },
       },
     });
-    const leaderboard = users.map(user => ({
-      user: user.nickname || user.name || 'Anonym',
-      selections: user.selections.map(sel => ({
-        rank: sel.rank,
-        runner: sel.runner ? {
-          firstname: sel.runner.firstname,
-          lastname: sel.runner.lastname,
-          gender: sel.runner.gender,
-          distance: sel.runner.distance,
-          category: sel.runner.category,
-        } : null
-      }))
-    }));
+    const races = await prisma.race.findMany();
+    const results = await prisma.officialResult.findMany();
+
+    // Map raceId to official top10
+    const resultMap = {};
+    results.forEach(r => { resultMap[r.raceId] = r.top10; });
+
+    // Calculate points per user per race
+    const leaderboard = users.map(user => {
+      const raceScores = {};
+      let total = 0;
+      races.forEach(race => {
+        const selections = user.selections.filter(sel => sel.raceId === race.id);
+        const official = resultMap[race.id];
+        let points = 0;
+        if (official && selections.length === 10) {
+          points = selections.reduce((sum, sel, idx) => sum + (sel.runner && sel.runner.id === official[idx] ? 1 : 0), 0);
+        }
+        raceScores[race.id] = { race, points };
+        total += points;
+      });
+      return {
+        user: { id: user.id, nickname: user.nickname, name: user.name, email: user.email },
+        total,
+        raceScores,
+      };
+    });
+
+    leaderboard.sort((a, b) => b.total - a.total);
     res.json(leaderboard);
   } catch (err) {
-    res.status(500).json({ error: 'Kunne ikke hente leaderboard' });
+    res.status(500).json({ error: 'Could not fetch leaderboard' });
   }
 });
 
@@ -372,6 +315,13 @@ app.post('/runners/:id/claim', isAuthenticated, async (req, res) => {
     if (userEmail !== 'eplehans@gmail.com') {
       const alreadyClaimed = await prisma.runner.findFirst({ where: { claimedByUserId: userId } });
       if (alreadyClaimed) return res.status(400).json({ error: 'You have already claimed a runner' });
+      // Name similarity check
+      const userName = req.user.name || req.user.nickname || '';
+      const runnerName = `${runner.firstname} ${runner.lastname}`;
+      const similarity = stringSimilarity(userName, runnerName);
+      if (similarity < 0.5) {
+        return res.status(400).json({ error: 'Runner name must be similar to your logged-in name to claim.' });
+      }
     }
     const updated = await prisma.runner.update({ where: { id }, data: { claimedByUserId: userId } });
     res.json({ success: true, runner: updated });
@@ -403,7 +353,6 @@ app.patch('/runners/:id', isAuthenticated, async (req, res) => {
   }
 });
 
-// Get a single race by ID
 app.get('/races/:raceId', async (req, res) => {
   const { raceId } = req.params;
   try {
@@ -476,12 +425,101 @@ app.post('/runners/:id/profile-picture', isAuthenticated, upload.single('profile
       where: { id },
       data: { profilePicture: req.file.filename },
     });
+    // Also update the user's profile picture
+    await prisma.user.update({
+      where: { id: userId },
+      data: { profilePicture: req.file.filename },
+    });
     res.json({ success: true, runner: updated, url: `/uploads/${req.file.filename}` });
   } catch (err) {
     res.status(500).json({ error: 'Could not upload profile picture' });
   }
 });
 
+// Get leaderboard for a specific race
+app.get('/races/:raceId/leaderboard', async (req, res) => {
+  const { raceId } = req.params;
+  try {
+    // Get all selections for this race, including user and runner info
+    const selections = await prisma.selection.findMany({
+      where: { raceId },
+      include: { user: true, runner: true },
+      orderBy: [{ userId: 'asc' }, { rank: 'asc' }],
+    });
+
+    // Get official result for this race
+    const official = await prisma.officialResult.findUnique({ where: { raceId } });
+    if (!official) return res.json([]); // No results yet
+
+    // Calculate points for each user
+    const userMap = {};
+    selections.forEach(sel => {
+      if (!userMap[sel.userId]) {
+        userMap[sel.userId] = { user: sel.user, predictions: [], points: 0 };
+      }
+      userMap[sel.userId].predictions[sel.rank - 1] = sel.runner;
+    });
+
+    // Simple scoring: +1 point for each correct runner in correct position
+    Object.values(userMap).forEach(entry => {
+      if (!official.top10) return;
+      entry.points = entry.predictions.reduce((sum, runner, idx) => {
+        return sum + (runner && runner.id === official.top10[idx] ? 1 : 0);
+      }, 0);
+    });
+
+    // Return sorted leaderboard
+    const leaderboard = Object.values(userMap).sort((a, b) => b.points - a.points);
+    res.json(leaderboard);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch race leaderboard' });
+  }
+});
+
+// Get runners for a specific race
+app.get('/races/:raceId/runners', async (req, res) => {
+  const { raceId } = req.params;
+  try {
+    const race = await prisma.race.findUnique({
+      where: { id: raceId },
+      include: { runners: true },
+    });
+    res.json(race ? race.runners : []);
+  } catch (err) {
+    res.status(500).json({ error: 'Kunne ikke hente løpere' });
+  }
+});
+
+// Serve index.html for all non-API, non-static routes
+if (process.env.NODE_ENV === 'production') {
+  // app.get('*', (req, res) => {
+  //   if (
+  //     !req.path.startsWith('/api') &&
+  //     !req.path.startsWith('/uploads') &&
+  //     !req.path.startsWith('/auth') &&
+  //     !req.path.startsWith('/runners') &&
+  //     !req.path.startsWith('/selections') &&
+  //     !req.path.startsWith('/me') &&
+  //     !req.path.startsWith('/leaderboard')
+  //   ) {
+  //     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+  //   }
+  // });
+}
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  if (app._router) {
+    app._router.stack.forEach((middleware) => {
+      if (middleware.route) {
+        console.log('Route:', middleware.route.path);
+      } else if (middleware.name === 'router') {
+        middleware.handle.stack.forEach((handler) => {
+          if (handler.route) {
+            console.log('Route:', handler.route.path);
+          }
+        });
+      }
+    });
+  }
 }); 

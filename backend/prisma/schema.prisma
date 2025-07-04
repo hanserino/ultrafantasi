@@ -23,6 +23,7 @@ model User {
   selections    Selection[]
   createdAt     DateTime @default(now())
   claimedRunners Runner[] @relation("UserClaimedRunners")
+  profilePicture String? // Path or URL to profile picture
 }
 
 model Race {

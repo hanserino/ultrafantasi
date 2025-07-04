@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function RaceOverview({ selectedRace, onSelect }) {
+function RaceOverview() {
   const [races, setRaces] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetch('/races')
@@ -21,9 +23,9 @@ function RaceOverview({ selectedRace, onSelect }) {
           <li key={race.id} style={{ marginBottom: 12 }}>
             <button
               style={{
-                fontWeight: race.id === (selectedRace && selectedRace.id) ? 'bold' : 'normal',
-                background: race.id === (selectedRace && selectedRace.id) ? '#222' : '#eee',
-                color: race.id === (selectedRace && selectedRace.id) ? '#fff' : '#222',
+                fontWeight: 'bold',
+                background: '#eee',
+                color: '#222',
                 border: 'none',
                 borderRadius: 4,
                 padding: '0.7em 1.2em',
@@ -31,7 +33,7 @@ function RaceOverview({ selectedRace, onSelect }) {
                 width: '100%',
                 textAlign: 'left',
               }}
-              onClick={() => onSelect(race)}
+              onClick={() => navigate(`/races/${race.id}`)}
             >
               {race.name} <span style={{ fontWeight: 400, fontSize: '0.9em' }}>({new Date(race.date).toLocaleDateString()})</span>
             </button>

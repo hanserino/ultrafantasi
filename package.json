@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "lodash": "^4.17.21",
-    "react-beautiful-dnd": "^13.1.1"
+    "react-beautiful-dnd": "^13.1.1",
+    "string-similarity": "^4.0.4"
   }
 }
