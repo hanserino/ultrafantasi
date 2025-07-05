@@ -11,6 +11,8 @@ export default defineConfig({
       '/me': 'http://localhost:4000',
       '/leaderboard': 'http://localhost:4000',
       '/uploads': 'http://localhost:4000',
+      '/scrape-race': 'http://localhost:4000',
+      '/api': 'http://localhost:4000',
       '/races': {
         target: 'http://localhost:4000',
         changeOrigin: true,

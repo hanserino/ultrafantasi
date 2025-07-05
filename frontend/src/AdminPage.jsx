@@ -88,6 +88,13 @@ function AdminPage() {
   const [raceEdit, setRaceEdit] = useState(null);
   const [raceEditLoading, setRaceEditLoading] = useState(false);
   const [raceEditMessage, setRaceEditMessage] = useState("");
+  
+  // Race scraping state
+  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [scrapeRaceName, setScrapeRaceName] = useState('');
+  const [scrapeRaceDate, setScrapeRaceDate] = useState('');
+  const [scraping, setScraping] = useState(false);
+  const [scrapeMessage, setScrapeMessage] = useState('');
 
   const handleMetaChange = useRef((id, field, value) => {
     setEditMeta(meta => ({ ...meta, [id]: { ...meta[id], [field]: value } }));
@@ -270,6 +277,42 @@ function AdminPage() {
     }
   };
 
+  const scrapeRace = async (e) => {
+    e.preventDefault();
+    setScraping(true);
+    setScrapeMessage('');
+    
+    try {
+      const response = await fetch('/api/scrape-race', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          racetrackerUrl: scrapeUrl,
+          raceName: scrapeRaceName,
+          raceDate: scrapeRaceDate
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        setScrapeMessage(`✅ Løp importert! ${result.createdRunners} løpere lagt til av ${result.totalRunners} deltakere.`);
+        setScrapeUrl('');
+        setScrapeRaceName('');
+        setScrapeRaceDate('');
+        // Refresh races list
+        fetch('/races').then(res => res.json()).then(setRaces);
+      } else {
+        setScrapeMessage(`❌ Feil: ${result.error}`);
+      }
+    } catch (err) {
+      setScrapeMessage(`❌ Feil: ${err.message}`);
+    } finally {
+      setScraping(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 1600, margin: '0 auto', padding: 16 }}>
       <h2>Admin</h2>
@@ -286,6 +329,55 @@ function AdminPage() {
           <button type="submit">Opprett løp</button>
         </form>
       </section>
+      
+      <section style={{ marginBottom: 32 }}>
+        <h3>Importer løp fra racetracker.no</h3>
+        <form onSubmit={scrapeRace} style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 600 }}>
+          <label>
+            Løps-URL (fra racetracker.no):
+            <input
+              type="url"
+              value={scrapeUrl}
+              onChange={e => setScrapeUrl(e.target.value)}
+              placeholder="https://racetracker.no/events/2024/meraker-mountain-challenge/"
+              required
+            />
+          </label>
+          <label>
+            Løpsnavn:
+            <input
+              type="text"
+              value={scrapeRaceName}
+              onChange={e => setScrapeRaceName(e.target.value)}
+              placeholder="Meråker Mountain Challenge 2024"
+              required
+            />
+          </label>
+          <label>
+            Løpsdato:
+            <input
+              type="date"
+              value={scrapeRaceDate}
+              onChange={e => setScrapeRaceDate(e.target.value)}
+              required
+            />
+          </label>
+          <button type="submit" disabled={scraping}>
+            {scraping ? 'Importerer...' : 'Importer løp og deltakere'}
+          </button>
+          {scrapeMessage && (
+            <div style={{ 
+              color: scrapeMessage.includes('✅') ? 'green' : 'red',
+              padding: 8,
+              borderRadius: 4,
+              backgroundColor: scrapeMessage.includes('✅') ? '#e8f5e8' : '#ffe8e8'
+            }}>
+              {scrapeMessage}
+            </div>
+          )}
+        </form>
+      </section>
+      
       <section style={{ marginBottom: 32 }}>
         <h3>Velg løp</h3>
         <select value={selectedRace ? selectedRace.id : ''} onChange={e => setSelectedRace(races.find(r => r.id === e.target.value))}>
